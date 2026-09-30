@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RunMate — Order Bib Clips</title>
+<style>
+:root{--lime:#c6ff00;--bg:#0b0b0b;--card:#161616;--line:#2a2a2a;--mut:#9a9a9a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:16px}
+.wrap{max-width:520px;margin:0 auto;padding:20px 16px 60px}
+.logo{font-weight:900;font-size:26px;letter-spacing:1px}.logo b{color:var(--lime)}
+h1{font-size:22px;margin:4px 0 2px}.sub{color:var(--mut);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+label{display:block;font-size:13px;color:var(--mut);margin:12px 0 6px}label:first-child{margin-top:0}
+input,textarea{width:100%;background:#0f0f0f;border:1px solid var(--line);border-radius:12px;color:#fff;padding:14px;font-size:16px}
+input:focus,textarea:focus{outline:2px solid var(--lime);border-color:transparent}
+.d{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+.d:last-child{border:0}.d .n{font-weight:700;font-size:17px}.d .p{color:var(--mut);font-size:13px}
+.q{display:flex;align-items:center;gap:8px}
+.q button{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:#0f0f0f;color:var(--lime);font-size:24px}
+.q input{width:56px;text-align:center;padding:10px 0;font-weight:700}
+.note{color:var(--lime);font-size:13px;margin:0 0 8px}
+.row{display:flex;justify-content:space-between;padding:6px 0}.tot{font-weight:800;font-size:19px;color:var(--lime);border-top:1px solid var(--line);margin-top:6px;padding-top:12px}
+.btn{width:100%;background:var(--lime);color:#000;border:0;border-radius:14px;padding:18px;font-size:18px;font-weight:800}
+.btn:disabled{opacity:.5}
+.err{background:#3a1212;border:1px solid #7a2020;color:#ffb4b4;border-radius:12px;padding:12px;margin-bottom:12px;display:none}
+.ok{text-align:center}.ok .tick{font-size:48px;color:var(--lime)}.oid{font-size:32px;font-weight:900;color:var(--lime);margin:6px 0}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">RUN<b>MATE</b></div>
+
+  <div id="formView">
+    <h1>Order Bib Clips</h1>
+    <p class="sub">Fill in your details and pick your designs.</p>
+    <div id="err" class="err"></div>
+
+    <div class="card">
+      <label>Full Name *</label><input id="name" autocomplete="name">
+      <label>Phone / WhatsApp *</label><input id="phone" type="tel" inputmode="tel" placeholder="03001234567" autocomplete="tel">
+      <label>City *</label><input id="city" autocomplete="address-level2">
+      <label>Club / Group Name (optional)</label><input id="club">
+    </div>
+
+    <div class="card">
+      <div style="font-weight:800;margin-bottom:4px">Select your design</div>
+      <p class="note">These are already discounted RunMate prices.</p>
+      <div id="designs">Loading designs…</div>
+      <div id="customBox" class="hide">
+        <label>Custom Design Details</label>
+        <textarea id="customDetails" rows="3" placeholder="Describe your custom design, logo, text, colours or other requirements."></textarea>
+      </div>
+    </div>
+
+    <div class="card" id="summary"></div>
+    <button class="btn" id="submitBtn">SUBMIT ORDER</button>
+  </div>
+
+  <div id="doneView" class="card ok hide"></div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://luasdfsyuqcjoyifbefo.supabase.co";
+const SUPABASE_KEY = "sb_publishable_p8Xn7MqcFwEetDZuOHaIoA_31GaPdea";
+const ORIGINAL = 499; // display only; the database recalculates real prices
+const $ = id => document.getElementById(id);
+const rs = n => "Rs. " + Number(n).toLocaleString("en-US");
+let designs = [];
+
+async function rpc(fn, body) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: "POST",
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body || {})
+  });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((data && data.message) || "Request failed");
+  return data;
+}
+
+function showErr(m) { const e = $("err"); e.textContent = m; e.style.display = m ? "block" : "none"; if (m) e.scrollIntoView({behavior:"smooth",block:"center"}); }
+
+async function loadDesigns() {
+  try { designs = await rpc("public_designs"); }
+  catch (e) { $("designs").textContent = "Unable to load designs. Please refresh the page."; return; }
+  $("designs").innerHTML = designs.map((d, i) => `
+    <div class="d">
+      <div><div class="n">${d.is_custom ? "Custom / Customized Design" : d.name}</div>
+      <div class="p">${d.is_custom ? "Custom pricing will be confirmed after reviewing your requirements." : rs(d.selling_price) + " each"}</div></div>
+      <div class="q">
+        <button type="button" data-i="${i}" data-d="-1" aria-label="less">−</button>
+        <input type="number" inputmode="numeric" min="0" step="1" value="0" data-q="${i}">
+        <button type="button" data-i="${i}" data-d="1" aria-label="more">+</button>
+      </div>
+    </div>`).join("");
+  $("designs").addEventListener("click", e => {
+    const b = e.target.closest("button[data-i]"); if (!b) return;
+    const inp = document.querySelector(`[data-q="${b.dataset.i}"]`);
+    inp.value = Math.max(0, (parseInt(inp.value, 10) || 0) + parseInt(b.dataset.d, 10)); refresh();
+  });
+  $("designs").addEventListener("input", refresh);
+  refresh();
+}
+
+// Always reads the REAL inputs on screen, never a stale array.
+function readItems() {
+  const items = []; let bad = false;
+  document.querySelectorAll("[data-q]").forEach(inp => {
+    const raw = inp.value.trim(); if (raw === "" || raw === "0") return;
+    if (!/^\d+$/.test(raw) || parseInt(raw, 10) < 1) { bad = true; return; }
+    items.push({ design: designs[inp.dataset.q].name, qty: parseInt(raw, 10), custom: designs[inp.dataset.q].is_custom, price: designs[inp.dataset.q].selling_price });
+  });
+  return { items, bad };
+}
+
+function refresh() {
+  const { items } = readItems();
+  $("customBox").classList.toggle("hide", !items.some(i => i.custom));
+  if (!items.length) { $("summary").innerHTML = '<div class="p" style="color:var(--mut)">Your order summary will appear here.</div>'; return; }
+  let pieces = 0, orig = 0, tot = 0, hasCustom = false, lines = "";
+  items.forEach(i => {
+    pieces += i.qty; lines += `<div class="row"><span>${i.design} × ${i.qty}</span><span>${i.custom ? "Price to be confirmed" : rs(i.qty * i.price)}</span></div>`;
+    if (i.custom) hasCustom = true; else { orig += i.qty * ORIGINAL; tot += i.qty * i.price; }
+  });
+  $("summary").innerHTML = `<div style="font-weight:800;margin-bottom:6px">Order Summary</div>${lines}
+    <div class="row"><span>Total pieces</span><span>${pieces}</span></div>
+    ${tot ? `<div class="row"><span>Original price</span><span>${rs(orig)}</span></div>
+    <div class="row"><span>Discount</span><span>− ${rs(orig - tot)}</span></div>
+    <div class="row tot"><span>Total payable</span><span>${rs(tot)}</span></div>` : ""}
+    ${hasCustom ? '<div class="note" style="margin-top:8px">Custom items: price to be confirmed.</div>' : ""}`;
+}
+
+let busy = false;
+$("submitBtn").addEventListener("click", async () => {
+  if (busy) return;
+  showErr("");
+  const name = $("name").value.trim(), phone = $("phone").value.trim(), city = $("city").value.trim();
+  if (!name || !city) return showErr("Please enter your name and city.");
+  if (!/^\+?\d[\d\s-]{9,14}$/.test(phone)) return showErr("Please enter a valid phone number.");
+  const { items, bad } = readItems();
+  if (bad || !items.length) return showErr("Please select at least one design and enter a quantity greater than 0.");
+
+  busy = true; const btn = $("submitBtn"); btn.disabled = true; btn.textContent = "Submitting Order...";
+  try {
+    const res = await rpc("submit_order", {
+      p_name: name, p_phone: phone, p_city: city, p_club: $("club").value.trim(),
+      p_items: items.map(i => ({ design: i.design, qty: i.qty })),
+      p_custom_details: items.some(i => i.custom) ? $("customDetails").value.trim() : null
+    });
+    const r = Array.isArray(res) ? res[0] : res;
+    $("formView").classList.add("hide");
+    $("doneView").classList.remove("hide");
+    $("doneView").innerHTML = `<div class="tick">✓</div><h1>ORDER RECEIVED</h1>
+      <p>Thank you, ${name.replace(/</g,"&lt;")}.<br>Your RunMate order has been received.</p>
+      <div class="p" style="color:var(--mut)">Order ID</div><div class="oid">${r.order_number}</div>
+      <div style="text-align:left;margin:14px 0">${items.map(i => `<div class="row"><span>${i.design}</span><span>× ${i.qty}</span></div>`).join("")}
+      <div class="row tot"><span>Total pieces</span><span>${r.total_pieces}</span></div></div>
+      <p style="color:var(--mut)">RunMate will review your order and contact you for confirmation if required.</p>`;
+    window.scrollTo(0, 0);
+  } catch (e) {
+    showErr("Unable to submit the order right now. Please try again."); // form is NOT cleared
+    btn.disabled = false; btn.textContent = "SUBMIT ORDER"; busy = false;
+  }
+});
+
+loadDesigns();
+</script>
+</body>
+</html>
